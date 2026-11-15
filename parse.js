@@ -1444,6 +1444,18 @@ function matchExtendedAutolink(s, i, prev) {
       if (c === CC_SPACE || c === CC_TAB || c === 10 || c === CC_LT) break;
       j++;
     }
+    // A "(" is part of the URL only when it is closed later in the
+    // word (balanced parens). Truncate at the first unclosed "(" —
+    // e.g. "https://example.com](https://other.com" links only the
+    // "https://example.com]" part, and "https://example.com/a(b"
+    // links only "https://example.com/a".
+    let depth = 0, firstOpen = -1;
+    for (let k = i; k < j; k++) {
+      const c = s.charCodeAt(k);
+      if (c === CC_LP) { if (depth === 0) firstOpen = k; depth++; }
+      else if (c === CC_RP && depth > 0) { depth--; if (depth === 0) firstOpen = -1; }
+    }
+    if (depth > 0 && firstOpen >= 0) j = firstOpen;
     let url = trimAutolinkTail(s.slice(i, j));
     if (!url) return null;
     const href = kind === 0 ? 'http://' + url : url;
@@ -1482,12 +1494,17 @@ function trimAutolinkTail(url) {
       continue;
     }
     if (last === CC_RP) {
-      let open = 0, close = 0;
-      for (let k = 0; k < url.length; k++) {
-        if (url.charCodeAt(k) === CC_LP) open++;
-        else if (url.charCodeAt(k) === CC_RP) close++;
+      // A trailing ")" is kept only when it closes an unmatched "("
+      // earlier in the URL (proper nesting, not a raw total count:
+      // "a)](b)" keeps its final ")" because the "(" before "b"
+      // matches it, even though the ")" after "a" is extra).
+      let depth = 0;
+      for (let k = 0; k < url.length - 1; k++) {
+        const c = url.charCodeAt(k);
+        if (c === CC_LP) depth++;
+        else if (c === CC_RP && depth > 0) depth--;
       }
-      if (close > open) { url = url.slice(0, -1); continue; }
+      if (depth === 0) { url = url.slice(0, -1); continue; }
       break;
     }
     if (last === CC_SEMI) {
@@ -1814,7 +1831,21 @@ function inlineHtml(s, refs) {
         }
         const linkNode = { t: br.img ? 8 : 7, href: linkInfo.dest, title: linkInfo.title, ch: children };
         nodes.splice(bIdx, nodes.length - bIdx, linkNode);
-        for (let k = bi; k < brackets.length; k++) brackets[k].active = false;
+        // A link inside a bracket kills every open LINK bracket for
+        // link formation: a link's text cannot contain a link, so no
+        // enclosing [ can ever form one now, and bare autolinks
+        // inside them must not be suppressed. But the brackets stay
+        // "active" for ] matching — a ] still consumes the nearest
+        // open [ even when no link forms (cm-520) — so this is a
+        // separate "dead" flag, consulted only by the autolink
+        // suppression check. Image brackets survive (an image may
+        // contain a link's text as alt, cm-575).
+        if (br.img) {
+          for (let k = bi; k < brackets.length; k++) brackets[k].active = false;
+        } else {
+          for (let k = 0; k < brackets.length; k++) if (!brackets[k].img) brackets[k].dead = true;
+          for (let k = bi; k < brackets.length; k++) brackets[k].active = false;
+        }
         br.active = false;
         i = linkInfo.next; textStart = i;
         continue;
@@ -1860,9 +1891,11 @@ function inlineHtml(s, refs) {
       // Inside an open inline <a>, bare autolinks are suppressed.
       const ext = inAnchor ? null : matchExtendedAutolink(s, i, prev);
       // A link cannot contain another link: an extended autolink
-      // inside an open "[" stays plain text.
+      // inside an open "[" that can still form a link stays plain
+      // text. (A bracket killed by an inner link — dead — no longer
+      // suppresses, since it can never form one.)
       let inLink = false;
-      if (ext) { for (const b of brackets) if (b.active) { inLink = true; break; } }
+      if (ext) { for (const b of brackets) if (b.active && !b.dead) { inLink = true; break; } }
       if (ext && !inLink) {
         flush(i);
         nodes.push({ t: 9, href: ext.href, text: ext.text });

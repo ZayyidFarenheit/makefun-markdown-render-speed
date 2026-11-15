@@ -1637,7 +1637,7 @@ function processEmphasis(nodes) {
         for (let j = i + 1; j < closerIdx; j++) {
           const mid = nodes[j];
           if ((mid.t === 11 || mid.t === 12 || mid.t === 13) && mid.dc === nd.ch && mid.co && !mid.oc &&
-              ((mid.cn + nd.n) % 3 === 0 ||
+              (((use0 === 1 || closer.n === use0) && (mid.cn + nd.n) % 3 === 0) ||
                (closer.n === use0 && (mid.cn + closer.n) % 3 === 0))) {
             // A delimiter between the inner node and the closer
             // breaks the effect when it is a run of 2+ (a "**"), or

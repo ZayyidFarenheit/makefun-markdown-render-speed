@@ -1543,7 +1543,7 @@ function processEmphasis(nodes) {
     if (!opener) { startIdx = closerIdx + 1; continue; }
     const use = (opener.n >= 2 && closer.n >= 2) ? 2 : 1;
     const children = nodes.slice(openerIdx + 1, closerIdx);
-    const emNode = { t: closer.ch === '~' ? 11 : (use === 2 ? 12 : 13), ch: children };
+    const emNode = { t: closer.ch === '~' ? 11 : (use === 2 ? 12 : 13), ch: children, cn: use, co: closer.canOpen };
     opener.n -= use;
     closer.n -= use;
     const rep = [];

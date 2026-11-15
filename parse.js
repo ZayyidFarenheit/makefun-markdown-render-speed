@@ -12,6 +12,14 @@ const CC_SPACE = 32, CC_TAB = 9, CC_LT = 60, CC_GT = 62, CC_AMP = 38,
   CC_SEMI = 59, CC_EQ = 61, CC_DASH = 45, CC_PLUS = 43, CC_DOT = 46,
   CC_PIPE = 124, CC_CARET = 94, CC_PCT = 37;
 
+// Document-wide anchor state (reset per parse() call): true while an
+// inline <a> tag is open. While true, bare extended autolinks (URLs and
+// emails) are NOT formed — marked suppresses them inside an open anchor
+// — but angle autolinks <https://...> and markdown links still form.
+// Set by an opening <a> tag, cleared by </a>. Only an <a> whose tag
+// contains a literal space or "=" sets it (<a/> and <a\n/> do not).
+let inAnchor = false;
+
 function isSpace(c) { return c === CC_SPACE || c === CC_TAB; }
 function isDigit(c) { return c >= 48 && c <= 57; }
 function isAlpha(c) { return (c >= 65 && c <= 90) || (c >= 97 && c <= 122); }
@@ -1227,6 +1235,25 @@ function flanking(s, i, k) {
   return [left, right];
 }
 // Match an HTML tag starting at i (s[i] === '<'). Returns the tag string or null.
+// Update the document-wide anchor state for an inline HTML tag.
+// An opening <a> sets it (unless the tag is bare <a/> or <a\n/> —
+// no space and no attributes), a closing </a> clears it.
+function updateAnchorState(tag) {
+  let j = 1;
+  const closing = tag.charCodeAt(j) === CC_SLASH;
+  if (closing) j++;
+  let k = j;
+  while (k < tag.length && isAlpha(tag.charCodeAt(k))) k++;
+  const name = tag.slice(j, k).toLowerCase();
+  if (name !== 'a') return;
+  if (closing) { inAnchor = false; return; }
+  // Opening <a>: sets the state unless the tag has neither a literal
+  // space nor an "=" after the name (bare <a/>, <a\n/>, <a\t/>).
+  for (let q = k; q < tag.length; q++) {
+    const c = tag.charCodeAt(q);
+    if (c === CC_SPACE || c === CC_EQ) { inAnchor = true; return; }
+  }
+}
 function matchHtmlTag(s, i) {
   let j = i + 1;
   const closing = s.charCodeAt(j) === CC_SLASH;
@@ -1561,13 +1588,41 @@ function processEmphasis(nodes) {
         // of 3 is refused unless both lengths are multiples of 3.
         if ((nd.canClose || closer.canOpen) && (nd.n + closer.n) % 3 === 0 &&
             !(nd.n % 3 === 0 && closer.n % 3 === 0)) continue;
+        // Marked quirk (verified by probing): an outer opener is
+        // refused when an already-matched emphasis/strong node of
+        // the SAME delimiter sits between it and the closer with no
+        // other delimiter in between, that node's closing delimiter
+        // can open (left-flanking), its opening delimiter cannot
+        // close, and the closing delimiter's length plus the
+        // opener's length is a multiple of 3 — or plus the closer's
+        // length is a multiple of 3 when the closer is fully
+        // consumed by the match. (e.g. "*a **b**c*" stays literal
+        // and "*a **b** c*" matches; "*foo**bar**baz*" matches
+        // because its inner opener can close; a "~~" inside "_..._"
+        // does not block because the delimiters differ. A "*" between
+        // the inner node and the closer breaks the effect.)
+        let refused = false;
+        for (let j = i + 1; j < closerIdx; j++) {
+          const mid = nodes[j];
+          if ((mid.t === 11 || mid.t === 12 || mid.t === 13) && mid.dc === nd.ch && mid.co && !mid.oc &&
+              ((mid.cn + nd.n) % 3 === 0 ||
+               (closer.n === ((nd.n >= 2 && closer.n >= 2) ? 2 : 1) && (mid.cn + closer.n) % 3 === 0))) {
+            let blocked = false;
+            for (let k = j + 1; k < closerIdx; k++) {
+              const t2 = nodes[k].t;
+              if (t2 === 1 || t2 === 2 || t2 === 3) { blocked = true; break; }
+            }
+            if (!blocked) { refused = true; break; }
+          }
+        }
+        if (refused) continue;
         openerIdx = i; opener = nd; break;
       }
     }
     if (!opener) { startIdx = closerIdx + 1; continue; }
     const use = (opener.n >= 2 && closer.n >= 2) ? 2 : 1;
     const children = nodes.slice(openerIdx + 1, closerIdx);
-    const emNode = { t: closer.ch === '~' ? 11 : (use === 2 ? 12 : 13), ch: children, cn: use, co: closer.canOpen };
+    const emNode = { t: closer.ch === '~' ? 11 : (use === 2 ? 12 : 13), ch: children, cn: use, co: closer.canOpen, oc: opener.canClose, dc: closer.ch };
     opener.n -= use;
     closer.n -= use;
     const rep = [];
@@ -1666,6 +1721,7 @@ function inlineHtml(s, refs) {
       if (tag !== null) {
         flush(i);
         nodes.push({ t: 5, s: tag });
+        updateAnchorState(tag);
         i += tag.length; textStart = i;
         continue;
       }
@@ -1793,7 +1849,8 @@ function inlineHtml(s, refs) {
     // it is still at a word start (<https://x y> links the x).
     if (i === 0 || isWsU(s[i - 1]) || s[i - 1] === '*' || s[i - 1] === '_' || s[i - 1] === '~' || s[i - 1] === '(' || s[i - 1] === '<') {
       const prev = i === 0 ? ' ' : s[i - 1];
-      const ext = matchExtendedAutolink(s, i, prev);
+      // Inside an open inline <a>, bare autolinks are suppressed.
+      const ext = inAnchor ? null : matchExtendedAutolink(s, i, prev);
       // A link cannot contain another link: an extended autolink
       // inside an open "[" stays plain text.
       let inLink = false;
@@ -1927,6 +1984,7 @@ function renderBlock(b, refs, out) {
 
 // ---- entry point ----
 export function parse(markdown) {
+  inAnchor = false;
   const src = markdown.replace(/\r\n?/g, '\n');
   const lines = src.split('\n');
   const { doc, refs } = parseBlocks(lines);

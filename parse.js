@@ -221,6 +221,17 @@ function expandCodeTabs(s, col) {
   }
   return out;
 }
+// Effective column for tab expansion in fenced code content. When a
+// fence sits inside nested blockquotes, marked counts only ONE "> "
+// (2 columns) toward the tab column: "> > \ty" expands the tab as if
+// at column 2 (2 spaces), not column 4 (4 spaces), and the same holds
+// for three quotes. Count the quote ancestors and subtract the extra
+// markers.
+function fenceTabCol(col, open) {
+  let q = 0;
+  for (const b of open) if (b.t === 'quote') q++;
+  return q > 1 ? Math.max(0, col - 2 * (q - 1)) : col;
+}
 // Columns of indentation of `line` starting at (pos, col).
 function indentFrom(line, pos, col) {
   let c = col, p = pos;
@@ -941,7 +952,7 @@ function parseBlocks(lines) {
         const failed = ci + 1 < open.length ? open[ci + 1] : null;
         if (!failed || failed.t === 'item' || failed.t === 'list') {
           const adv = advanceCols(rest, 0, col, deepest.indent || 0);
-          deepest.lines.push(expandCodeTabs(adv[0].slice(adv[1]), adv[2]));
+          deepest.lines.push(expandCodeTabs(adv[0].slice(adv[1]), fenceTabCol(adv[2], open)));
           for (const b of open) b.lastBlank = false;
           continue;
         }
@@ -1078,7 +1089,7 @@ function parseBlocks(lines) {
           continue;
         }
         const adv = advanceCols(rest, 0, col, leaf.indent || 0);
-        leaf.lines.push(expandCodeTabs(adv[0].slice(adv[1]), adv[2]));
+        leaf.lines.push(expandCodeTabs(adv[0].slice(adv[1]), fenceTabCol(adv[2], open)));
         // A blank line inside a fence is code content, not a blank
         // separator, so it must not mark the list loose.
         for (const b of open) b.lastBlank = false;

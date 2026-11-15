@@ -1092,15 +1092,27 @@ function parseBlocks(lines) {
           continue;
         }
       } else if (leaf.t === 'table') {
-        if (!restBlank) {
-          // A line that starts another block ends the table.
+        // A table row is any line that is not blank — but "blank" for
+        // a table means empty or spaces-only. A line containing a TAB
+        // is a row (its cells come out empty), as is a line with no
+        // "|" at all (one cell, padded with empty cells).
+        let tableBlank = true;
+        for (let q = 0; q < rest.length; q++) {
+          if (rest.charCodeAt(q) !== CC_SPACE) { tableBlank = false; break; }
+        }
+        if (!tableBlank) {
+          // A line that starts another block ends the table — but a
+          // whitespace-only line (a tab) is a row regardless of its
+          // (tab-expanded) indent, never a block start.
           const fns = firstNonSpace(rest);
           const ind = indentFrom(rest, 0, col);
           let ends = false;
-          if (ind <= 3) {
-            if (fenceStart(rest, fns) || isThematicBreak(rest, fns) || atxHeading(rest, fns) ||
-              rest.charCodeAt(fns) === CC_GT || listStart(rest, fns) || htmlBlockType(rest, fns)) ends = true;
-          } else ends = true;
+          if (fns < rest.length) {
+            if (ind <= 3) {
+              if (fenceStart(rest, fns) || isThematicBreak(rest, fns) || atxHeading(rest, fns) ||
+                rest.charCodeAt(fns) === CC_GT || listStart(rest, fns) || htmlBlockType(rest, fns)) ends = true;
+            } else ends = true;
+          }
           if (!ends) {
             leaf.rows.push(splitTableRow(rest));
             for (const b of open) b.lastBlank = false;

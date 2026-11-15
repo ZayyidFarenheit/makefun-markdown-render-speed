@@ -187,6 +187,22 @@ function advanceCols(line, pos, col, n) {
 // Expand tabs in code-block content to spaces, based on the absolute
 // column. A tab at absolute column 0 is preserved (marked keeps it);
 // any other tab advances to the next multiple of 4.
+// Expand tabs that sit in the leading whitespace of a line (before the
+// first non-whitespace character), based on the absolute column.
+// Tabs after content are preserved (cm-003). Used for indented code:
+// a tab in the leading whitespace past the 4-column indent is expanded
+// by marked (e.g. "       \ty" in a list item becomes "  y"), while a
+// tab after text stays a tab.
+function expandLeadingTabs(s, col) {
+  let i = 0, c = col, out = '';
+  while (i < s.length) {
+    const ch = s.charCodeAt(i);
+    if (ch === CC_SPACE) { out += ' '; i++; c++; }
+    else if (ch === CC_TAB) { const n = 4 - (c % 4); out += '    '.slice(0, n); c += n; i++; }
+    else break;
+  }
+  return out + s.slice(i);
+}
 function expandCodeTabs(s, col) {
   if (col === 0 || s.indexOf('\t') === -1) return s;
   let out = '', c = col;
@@ -829,7 +845,10 @@ function parseBlocks(lines) {
       }
       const adv = advanceCols(content, 0, col0, 4);
       const c = blk('code');
-      c.lines = [adv[0].slice(adv[1])];
+      const s0 = adv[0].slice(adv[1]);
+      // Inside a container (col0 > 0) a tab in the remaining leading
+      // whitespace is expanded; at the top level it is preserved.
+      c.lines = [col0 > 0 ? expandLeadingTabs(s0, adv[2]) : s0];
       addChild(cur, c); open.push(c);
       return;
     }
@@ -1060,14 +1079,19 @@ function parseBlocks(lines) {
         if (restBlank) {
           // A whitespace-only line inside a code block keeps its
           // whitespace minus the 4-column indent (6 spaces -> 2).
+          // Inside a container (list/quote, col > 0) a tab in the
+          // remaining leading whitespace is expanded; at the top
+          // level it is preserved (cm-001/002/003).
           const adv = advanceCols(rest, 0, col, 4);
-          leaf.lines.push(adv[0].slice(adv[1]));
+          const s = adv[0].slice(adv[1]);
+          leaf.lines.push(col > 0 ? expandLeadingTabs(s, adv[2]) : s);
           for (const b of open) b.lastBlank = false;
           continue;
         }
         if (indentFrom(rest, 0, col) >= 4) {
           const adv = advanceCols(rest, 0, col, 4);
-          leaf.lines.push(adv[0].slice(adv[1]));
+          const s = adv[0].slice(adv[1]);
+          leaf.lines.push(col > 0 ? expandLeadingTabs(s, adv[2]) : s);
           for (const b of open) b.lastBlank = false;
           continue;
         }

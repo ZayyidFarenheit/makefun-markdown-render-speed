@@ -902,6 +902,23 @@ function parseBlocks(lines) {
     // a new block at the last matched container's level.
     if (!allMatched) {
       const deepest = open[open.length - 1];
+      // A fenced code block keeps its content even when a line does
+      // not match the enclosing LIST containers (e.g. a dedented line
+      // inside a fence in a list item stays in the fence; marked
+      // does not close the fence for it). This does NOT apply inside
+      // a blockquote: a line without ">" leaves the quote (and the
+      // fence) — cm-237. The closing fence is still recognised when
+      // the containers do match (phase 2).
+      if (deepest.t === 'fence' && !restBlank) {
+        const ci = open.indexOf(container);
+        const failed = ci + 1 < open.length ? open[ci + 1] : null;
+        if (!failed || failed.t === 'item' || failed.t === 'list') {
+          const adv = advanceCols(rest, 0, col, deepest.indent || 0);
+          deepest.lines.push(expandCodeTabs(adv[0].slice(adv[1]), adv[2]));
+          for (const b of open) b.lastBlank = false;
+          continue;
+        }
+      }
       if (deepest.t === 'para' && !restBlank && !startsBlock(rest)) {
         let text = rest;
         // A lazy line indented 4+ spaces loses a code-block indent

@@ -1593,24 +1593,32 @@ function processEmphasis(nodes) {
         // the SAME delimiter sits between it and the closer with no
         // other delimiter in between, that node's closing delimiter
         // can open (left-flanking), its opening delimiter cannot
-        // close, and the closing delimiter's length plus the
-        // opener's length is a multiple of 3 — or plus the closer's
-        // length is a multiple of 3 when the closer is fully
-        // consumed by the match. (e.g. "*a **b**c*" stays literal
-        // and "*a **b** c*" matches; "*foo**bar**baz*" matches
-        // because its inner opener can close; a "~~" inside "_..._"
-        // does not block because the delimiters differ. A "*" between
-        // the inner node and the closer breaks the effect.)
+        // close, the closer is fully consumed by the match, and the
+        // closing delimiter's length plus the opener's length — or
+        // plus the closer's length — is a multiple of 3. (e.g. "*a
+        // **b**c*" stays literal and "*a **b** c*" matches;
+        // "*foo**bar**baz*" matches because its inner opener can
+        // close; a "~~" inside "_..._" does not block because the
+        // delimiters differ. A "**" between the inner node and the
+        // closer, or a strong match, breaks the effect; a lone "*"
+        // does not break an emphasis match. A trailing "***" leaves
+        // a "*" behind, so the closer is not fully consumed and the
+        // outer "**" still matches.)
         let refused = false;
+        const use0 = (nd.n >= 2 && closer.n >= 2) ? 2 : 1;
         for (let j = i + 1; j < closerIdx; j++) {
           const mid = nodes[j];
           if ((mid.t === 11 || mid.t === 12 || mid.t === 13) && mid.dc === nd.ch && mid.co && !mid.oc &&
               ((mid.cn + nd.n) % 3 === 0 ||
-               (closer.n === ((nd.n >= 2 && closer.n >= 2) ? 2 : 1) && (mid.cn + closer.n) % 3 === 0))) {
+               (closer.n === use0 && (mid.cn + closer.n) % 3 === 0))) {
+            // A delimiter between the inner node and the closer
+            // breaks the effect when it is a run of 2+ (a "**"), or
+            // when the attempted match is a strong (use 2). A lone
+            // "*" does not break an emphasis match.
             let blocked = false;
             for (let k = j + 1; k < closerIdx; k++) {
               const t2 = nodes[k].t;
-              if (t2 === 1 || t2 === 2 || t2 === 3) { blocked = true; break; }
+              if ((t2 === 1 || t2 === 2 || t2 === 3) && (use0 === 2 || nodes[k].n >= 2)) { blocked = true; break; }
             }
             if (!blocked) { refused = true; break; }
           }

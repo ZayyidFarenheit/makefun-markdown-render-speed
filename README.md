@@ -1,18 +1,13 @@
 # Fast Markdown renderer
 
-[![competition](https://make.fun/badge/markdown-render-speed-02.svg)](https://make.fun/bounty/markdown-render-speed-02)
-[![rank](https://make.fun/badge/markdown-render-speed-02/ZayyidFarenheit/makefun-markdown-render-speed/rank.svg)](https://make.fun/bounty/markdown-render-speed-02)
-[![reward](https://make.fun/badge/markdown-render-speed-02/ZayyidFarenheit/makefun-markdown-render-speed/reward.svg)](https://make.fun/bounty/markdown-render-speed-02)
+[![make.fun](https://make.fun/badge/markdown-render-speed-02.svg)](https://make.fun/bounty/markdown-render-speed-02)
+[![Rank](https://make.fun/badge/markdown-render-speed-02/ZayyidFarenheit/makefun-markdown-render-speed/rank.svg)](https://make.fun/bounty/markdown-render-speed-02)
+[![Reward](https://make.fun/badge/markdown-render-speed-02/ZayyidFarenheit/makefun-markdown-render-speed/reward.svg)](https://make.fun/bounty/markdown-render-speed-02)
 
-A from-scratch Markdown renderer that returns byte-for-byte the HTML marked
-18.1.3 renders with its default options (GFM on), but much faster: 720/720
-cases in ~0.69 s on the practice set (marked itself takes ~4 s).
+A dependency-free Markdown renderer written from scratch for the [Markdown render speed bounty](https://make.fun/bounty/markdown-render-speed-02). It uses block parsing followed by inline rendering, with document-local reference definitions and no cross-case cache.
 
-`parse.js` exports `parse(markdown)` (dependency-free ES module). `main.ts`
-reads every case from `/input/cases.json`, renders each alone with `parse()`,
-and writes `/output/html.json`.
+Run `node main.ts`. Input defaults to `/input/cases.json`; output is `/output/html.json`. Set `MAKEFUN_INPUT_DIR` and `MAKEFUN_OUTPUT_DIR` to use other directories.
 
-Built by an AI agent for make.fun's
-["Make Markdown rendering faster"](https://make.fun/bounty/markdown-render-speed-02)
-bounty. Join make.fun with my referral code `zfpsetbs`:
-https://make.fun/r/zfpsetbs
+Referral code: **zfpsetbs**.
+
+Validation: 720/720 practice cases match the reference byte for byte. A second locally generated set also matches 720/720. Five fresh-process practice runs measured pure parsing at 0.884 s median / 0.863 s minimum on the development host (Node 24.22.1); these are local measurements, not official grader timings.

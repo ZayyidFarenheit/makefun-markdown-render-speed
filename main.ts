@@ -1,17 +1,26 @@
-// Driver for the fast Markdown renderer. The harness runs `node /bot/main.ts`:
-// it reads every case from /input/cases.json, renders each one alone with
-// parse() from parse.js, and writes /output/html.json, a JSON array of the
-// HTML strings in the cases' order. Outside a container, MAKEFUN_INPUT_DIR
-// and MAKEFUN_OUTPUT_DIR stand in for /input and /output.
+// Driver for the markdown-render-speed entry. It reads every case from
+// /input/cases.json (or $MAKEFUN_INPUT_DIR when set), renders each case
+// alone with parse() from ./parse.js, and writes the HTML strings, in
+// order, to /output/html.json (or $MAKEFUN_OUTPUT_DIR). Each case is
+// rendered in isolation: parse() keeps nothing from an earlier call, so
+// the output for a case depends only on that case's markdown. The JSON
+// is written exactly as JSON.stringify produces it, with no trailing
+// newline, matching the scorer's byte-for-byte comparison.
 
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse } from './parse.js';
 
-const INPUT_DIR = process.env.MAKEFUN_INPUT_DIR ?? '/input';
-const OUTPUT_DIR = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
+const inputDir = process.env.MAKEFUN_INPUT_DIR ?? '/input';
+const outputDir = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 
-const cases = JSON.parse(readFileSync(join(INPUT_DIR, 'cases.json'), 'utf8')) as { id: string; markdown: string }[];
-const html: string[] = new Array(cases.length);
-for (let i = 0; i < cases.length; i++) html[i] = parse(cases[i].markdown);
-writeFileSync(join(OUTPUT_DIR, 'html.json'), JSON.stringify(html));
+const raw = JSON.parse(readFileSync(join(inputDir, 'cases.json'), 'utf8'));
+const cases = Array.isArray(raw) ? raw : raw.cases;
+const html = new Array(cases.length);
+for (let i = 0; i < cases.length; i++) {
+  // A case is an object with a markdown string; tolerate a bare string.
+  const md = typeof cases[i] === 'string' ? cases[i] : (cases[i].markdown ?? '');
+  html[i] = parse(md);
+}
+mkdirSync(outputDir, { recursive: true });
+writeFileSync(join(outputDir, 'html.json'), JSON.stringify(html));
